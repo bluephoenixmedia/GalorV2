@@ -1,5 +1,5 @@
 package org.bpm.wizardsurvival.demo;
 
 enum EntityType {
-    PLAYER, RAFT_TILE, WATER_TILE
+    PLAYER, RAFT_TILE, WATER_TILE, ITEM
 }
