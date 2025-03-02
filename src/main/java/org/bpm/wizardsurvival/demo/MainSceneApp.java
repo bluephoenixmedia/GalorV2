@@ -9,14 +9,20 @@ import com.almasb.fxgl.entity.SpawnData;
 import com.almasb.fxgl.entity.Spawns;
 import com.almasb.fxgl.input.Input;
 import com.almasb.fxgl.input.UserAction;
+import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
+import javafx.geometry.Pos;
+import javafx.scene.control.Button;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import javafx.scene.text.TextAlignment;
 
 import java.util.Map;
 import java.util.Random;
@@ -56,12 +62,27 @@ public class MainSceneApp extends GameApplication {
     private Text foodText;
     private Text waterText;
 
+    private VBox cardHandContainer;
+    private HBox activeBuffsContainer;
+    private Text cardsLeftText;
+    private Text activeBuffsText;
+
     private int currentDay = 1;
     private int timeOfDay = 0; // 0-23 hours
     private WeatherType currentWeather = WeatherType.CLEAR;
     private int weatherDuration = 0;
     private Color skyColor = Color.SKYBLUE;
     private Rectangle skyOverlay;
+
+    private java.util.List<Card> deck = new java.util.ArrayList<>();
+    private java.util.List<Card> hand = new java.util.ArrayList<>();
+    private java.util.List<Card> discardPile = new java.util.ArrayList<>();
+    private java.util.List<Card> activeBuffs = new java.util.ArrayList<>();
+    private int handSize = 5;
+    private int maxHandSize = 7;
+    private int deckSize = 0;
+    private int cardsPlayed = 0;
+    private int maxCardsPerTurn = 3;
 
     @Override
     protected void initSettings(GameSettings settings) {
@@ -81,8 +102,16 @@ public class MainSceneApp extends GameApplication {
         // Create initial raft (3x3)
         createInitialRaft();
 
+        //should this be here?
+        initUI();
+
+        //initialize deck
+        initializeDeck();
+
         skyOverlay = new Rectangle(GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE, Color.TRANSPARENT);
         FXGL.addUINode(skyOverlay);
+
+
     }
 
     private void initializeGrid() {
@@ -368,8 +397,8 @@ public class MainSceneApp extends GameApplication {
         isPlayerTurn = false;
 
         // Update player stats
-        hunger = Math.max(0, hunger - 2);
-        thirst = Math.max(0, thirst - 3);
+        hunger = Math.max(0, hunger - 1);
+        thirst = Math.max(0, thirst - 1);
 
         if (hunger <= 0 || thirst <= 0) {
             health = Math.max(0, health - 5);
@@ -399,7 +428,9 @@ public class MainSceneApp extends GameApplication {
 
     private void updateOcean() {
         // Shift water tiles to create movement illusion
-        int shiftDirection = random.nextInt(4); // 0=up, 1=right, 2=down, 3=left
+        // TODO make this dependent on wind/ storm
+       // int shiftDirection = random.nextInt(4); // 0=up, 1=right, 2=down, 3=left
+        int shiftDirection = 1;
 
         switch (shiftDirection) {
             case 0: // Up
@@ -649,7 +680,7 @@ public class MainSceneApp extends GameApplication {
         double eventChance = 0.2; // 20% chance for random event
 
         if (random.nextDouble() < eventChance) {
-            int eventType = random.nextInt(3);
+            int eventType = random.nextInt(4);
 
             switch (eventType) {
                 case 0: // Debris found (gain materials)
@@ -669,7 +700,9 @@ public class MainSceneApp extends GameApplication {
                         FXGL.getNotificationService().pushNotification("A seagull flew by...");
                     }
                     break;
-            }
+                case 3: //find card
+            }       offerCardReward();
+                    FXGL.getNotificationService().pushNotification("Found card!");
         }
     }
 
@@ -709,6 +742,8 @@ public class MainSceneApp extends GameApplication {
         waterText = new Text("Water: " + water);
         waterText.setFill(Color.LIGHTBLUE);
         waterText.setFont(Font.font(16));
+
+        initCardUI();
 
         statsContainer.getChildren().addAll(
                 healthText, hungerText, thirstText, materialsText, foodText, waterText
@@ -994,6 +1029,10 @@ public class MainSceneApp extends GameApplication {
 
             // Update UI
             updateUI();
+
+            if (random.nextDouble() < 0.3) { // 30% chance
+                offerCardReward();
+            }
         }
     }
 
@@ -1078,6 +1117,595 @@ public class MainSceneApp extends GameApplication {
         }
 
         FXGL.getNotificationService().pushNotification(sb.toString());
+    }
+
+    private void initializeDeck() {
+        // Add basic action cards
+        addCardToDeck(new Card("Basic Fish", "Fish for food", ActionType.FISH, 1));
+        addCardToDeck(new Card("Basic Fish", "Fish for food", ActionType.FISH, 1));
+        addCardToDeck(new Card("Basic Fish", "Fish for food", ActionType.FISH, 1));
+
+        addCardToDeck(new Card("Basic Build", "Build raft extension", ActionType.BUILD, 1));
+        addCardToDeck(new Card("Basic Build", "Build raft extension", ActionType.BUILD, 1));
+
+        addCardToDeck(new Card("Basic Water", "Collect water", ActionType.COLLECT_WATER, 1));
+        addCardToDeck(new Card("Basic Water", "Collect water", ActionType.COLLECT_WATER, 1));
+
+        addCardToDeck(new Card("Basic Scavenge", "Scavenge for materials", ActionType.SCAVENGE, 1));
+        addCardToDeck(new Card("Basic Scavenge", "Scavenge for materials", ActionType.SCAVENGE, 1));
+        addCardToDeck(new Card("Basic Scavenge", "Scavenge for materials", ActionType.SCAVENGE, 1));
+
+        addCardToDeck(new Card("Basic Rest", "Rest and recover", ActionType.REST, 1));
+        addCardToDeck(new Card("Basic Rest", "Rest and recover", ActionType.REST, 1));
+
+        // Add a few starter permanent cards
+        addCardToDeck(new Card("Fishing Hook", "Improves fishing success", BuffEffect.FISHING_CHANCE, 10));
+        addCardToDeck(new Card("Sturdy Plank", "Improves raft durability", BuffEffect.BUILDING_STRENGTH, 15));
+
+        // Shuffle the deck
+        shuffleDeck();
+
+        // Deal initial hand
+        drawHand();
+    }
+
+    private void addCardToDeck(Card card) {
+        deck.add(card);
+        deckSize++;
+    }
+
+    private void shuffleDeck() {
+        // Add discard pile back to deck
+        deck.addAll(discardPile);
+        discardPile.clear();
+
+        // Shuffle
+        java.util.Collections.shuffle(deck);
+
+        //FXGL.getNotificationService().pushNotification("Deck shuffled!");
+    }
+
+    private void drawHand() {
+        // Clear current hand
+        hand.clear();
+
+        // Draw up to hand size
+        for (int i = 0; i < handSize; i++) {
+            if (deck.isEmpty() && !discardPile.isEmpty()) {
+                shuffleDeck();
+            }
+
+            if (!deck.isEmpty()) {
+                hand.add(deck.remove(0));
+            } else {
+                // No cards left
+                break;
+            }
+        }
+
+        updateCardDisplay();
+    }
+
+    private void discardHand() {
+        discardPile.addAll(hand);
+        hand.clear();
+    }
+
+    private void updateCardDisplay() {
+        // Clear previous cards
+
+        cardHandContainer.getChildren().clear();
+
+        // Add cards to display
+        for (int i = 0; i < hand.size(); i++) {
+            Card card = hand.get(i);
+
+            // Create card visual
+            Rectangle cardBg = new Rectangle(120, 160,
+                    card.getType() == CardType.ACTION ? Color.LIGHTBLUE : Color.GOLD);
+            cardBg.setArcWidth(15);
+            cardBg.setArcHeight(15);
+            cardBg.setStroke(Color.BLACK);
+            cardBg.setStrokeWidth(2);
+
+            Text cardName = new Text(card.getName());
+            cardName.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+            cardName.setWrappingWidth(100);
+            cardName.setTextAlignment(TextAlignment.CENTER);
+
+            Text cardDesc = new Text(card.getDescription());
+            cardDesc.setFont(Font.font("Arial", 12));
+            cardDesc.setWrappingWidth(100);
+            cardDesc.setTextAlignment(TextAlignment.CENTER);
+
+            String valueText;
+            if (card.getType() == CardType.ACTION) {
+                valueText = "Value: " + card.getValue();
+            } else {
+                valueText = "+" + card.getValue() + "% " + card.getBuffEffect().getDescription();
+            }
+
+            Text cardValue = new Text(valueText);
+            cardValue.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+            cardValue.setWrappingWidth(100);
+            cardValue.setTextAlignment(TextAlignment.CENTER);
+
+            VBox cardContent = new VBox(10);
+            cardContent.setPadding(new Insets(10));
+            cardContent.getChildren().addAll(cardName, cardDesc, cardValue);
+
+            // Make the card clickable
+            final int cardIndex = i;
+            cardBg.setOnMouseClicked(e -> playCard(cardIndex));
+
+            StackPane cardPane = new StackPane(cardBg, cardContent);
+            cardPane.setTranslateX(10);
+            cardPane.setTranslateY(10 + (i * 10)); // Stagger cards slightly
+
+            cardHandContainer.getChildren().add(cardPane);
+        }
+
+        // Update card count text
+        cardsLeftText.setText("Deck: " + deck.size() + " | Discard: " + discardPile.size() +
+                " | Played: " + cardsPlayed + "/" + maxCardsPerTurn);
+
+        // Update active buffs display
+        updateActiveBuffsDisplay();
+    }
+
+    private void updateActiveBuffsDisplay() {
+        // Clear previous buffs
+        activeBuffsContainer.getChildren().clear();
+
+        // Create text summary
+        StringBuilder sb = new StringBuilder("Active Buffs: ");
+
+        if (activeBuffs.isEmpty()) {
+            sb.append("None");
+        } else {
+            for (Card buff : activeBuffs) {
+                // Create buff visual
+                Rectangle buffBg = new Rectangle(80, 80, Color.GOLD);
+                buffBg.setArcWidth(10);
+                buffBg.setArcHeight(10);
+                buffBg.setStroke(Color.BLACK);
+                buffBg.setStrokeWidth(1);
+
+                Text buffName = new Text(buff.getName());
+                buffName.setFont(Font.font("Arial", FontWeight.BOLD, 10));
+                buffName.setWrappingWidth(70);
+                buffName.setTextAlignment(TextAlignment.CENTER);
+
+                Text buffEffect = new Text("+" + buff.getValue() + "% " +
+                        buff.getBuffEffect().getDescription());
+                buffEffect.setFont(Font.font("Arial", 9));
+                buffEffect.setWrappingWidth(70);
+                buffEffect.setTextAlignment(TextAlignment.CENTER);
+
+                VBox buffContent = new VBox(5);
+                buffContent.setPadding(new Insets(5));
+                buffContent.getChildren().addAll(buffName, buffEffect);
+
+                StackPane buffPane = new StackPane(buffBg, buffContent);
+
+                activeBuffsContainer.getChildren().add(buffPane);
+
+                // Add to text summary
+                sb.append("\n").append(buff.getName()).append(" (+").append(buff.getValue())
+                        .append("% ").append(buff.getBuffEffect().getDescription()).append(")");
+            }
+        }
+
+        activeBuffsText.setText(sb.toString());
+    }
+
+    private void playCard(int cardIndex) {
+        if (cardIndex < 0 || cardIndex >= hand.size() || cardsPlayed >= maxCardsPerTurn) {
+            return;
+        }
+
+        Card card = hand.get(cardIndex);
+
+        FXGL.getNotificationService().pushNotification("Playing card: " + card.getName());
+
+        // Handle card effect based on type
+        if (card.getType() == CardType.ACTION) {
+            executeActionCard(card);
+        } else {
+            executePermanentCard(card);
+        }
+
+        // Remove from hand and add to discard
+        hand.remove(cardIndex);
+        discardPile.add(card);
+
+        // Increment cards played
+        cardsPlayed++;
+
+        // Update UI
+        if (cardHandContainer != null) {
+            updateCardDisplay();
+        }
+
+        // If max cards played, end turn
+        if (cardsPlayed >= maxCardsPerTurn) {
+            FXGL.getNotificationService().pushNotification("Max cards played. Turn ending...");
+            endTurn();
+        }
+    }
+
+    private void executeActionCard(Card card) {
+        switch (card.getActionType()) {
+            case FISH:
+                fishWithCard(card);
+                break;
+            case BUILD:
+                buildWithCard(card);
+                break;
+            case COLLECT_WATER:
+                collectWaterWithCard(card);
+                break;
+            case SCAVENGE:
+                scavengeWithCard(card);
+                break;
+            case REST:
+                restWithCard(card);
+                break;
+            case REPAIR:
+                repairWithCard(card);
+                break;
+            case CRAFT:
+                craftWithCard(card);
+                break;
+            case NAVIGATE:
+                navigateWithCard(card);
+                break;
+        }
+    }
+
+    private void executePermanentCard(Card card) {
+        // Add to active buffs
+        activeBuffs.add(card);
+        FXGL.getNotificationService().pushNotification("Permanent effect activated: " +
+                card.getName() + " - " +
+                card.getDescription());
+
+        // If it's a card draw buff, immediately increase hand size
+        if (card.getBuffEffect() == BuffEffect.CARD_DRAW) {
+            handSize = Math.min(maxHandSize, handSize + card.getValue() / 100);
+            FXGL.getNotificationService().pushNotification("Hand size increased to " + handSize);
+        }
+    }
+
+    private double getBuffModifier(BuffEffect effect) {
+        double totalModifier = 1.0;
+
+        for (Card buff : activeBuffs) {
+            if (buff.getBuffEffect() == effect) {
+                totalModifier += buff.getValue() / 100.0;
+            }
+        }
+
+        return totalModifier;
+    }
+
+    // Implement action card methods
+    private void fishWithCard(Card card) {
+        double fishChance = 0.4 * getBuffModifier(BuffEffect.FISHING_CHANCE);
+
+        // Higher chance during dawn/dusk
+        if ((timeOfDay >= 5 && timeOfDay < 8) || (timeOfDay >= 18 && timeOfDay < 21)) {
+            fishChance += 0.1;
+        }
+
+        if (random.nextDouble() < fishChance) {
+            int fishAmount = (int)Math.ceil(card.getValue() * getBuffModifier(BuffEffect.FISHING_QUANTITY));
+            food += fishAmount;
+            FXGL.getNotificationService().pushNotification("Caught " + fishAmount + " fish!");
+        } else {
+            FXGL.getNotificationService().pushNotification("No fish caught...");
+        }
+
+        updateUI();
+    }
+
+    private void buildWithCard(Card card) {
+        // Get building cost reduction from buffs
+        double costModifier = 1.0 - Math.min(0.8, (getBuffModifier(BuffEffect.BUILDING_COST) - 1.0));
+
+        int buildCost = (int)Math.ceil(5 * costModifier);
+
+        if (materials >= buildCost) {
+            buildRaftExtension();
+            materials -= buildCost;
+            FXGL.getNotificationService().pushNotification("Built raft extension! (Cost: " + buildCost + " materials)");
+        } else {
+            FXGL.getNotificationService().pushNotification("Not enough materials! Need " + buildCost);
+        }
+
+        updateUI();
+    }
+
+    private void collectWaterWithCard(Card card) {
+        int waterAmount = (int)Math.ceil(card.getValue() * getBuffModifier(BuffEffect.WATER_QUANTITY));
+        water += waterAmount;
+
+        String message = "Collected " + waterAmount + " water";
+
+        // Check if water is automatically purified
+        double purifyChance = getBuffModifier(BuffEffect.WATER_QUALITY) - 1.0;
+        if (purifyChance > 0.5 || hasItem(ItemType.WATER_PURIFIER)) {
+            message += " (purified)";
+        } else {
+            message += " (needs purification)";
+        }
+
+        FXGL.getNotificationService().pushNotification(message);
+        updateUI();
+    }
+
+    private void scavengeWithCard(Card card) {
+        double findChance = 0.6 * getBuffModifier(BuffEffect.MATERIAL_CHANCE);
+
+        if (random.nextDouble() < findChance) {
+            int materialAmount = (int)Math.ceil(card.getValue() * getBuffModifier(BuffEffect.MATERIAL_QUANTITY));
+            materials += materialAmount;
+            FXGL.getNotificationService().pushNotification("Found " + materialAmount + " materials!");
+        } else {
+            FXGL.getNotificationService().pushNotification("Found nothing useful...");
+        }
+
+        updateUI();
+    }
+
+    private void restWithCard(Card card) {
+        int recoveryAmount = (int)Math.ceil(card.getValue() * 5 * getBuffModifier(BuffEffect.REST_RECOVERY));
+
+        health = Math.min(100, health + recoveryAmount);
+        hunger = Math.min(100, hunger + recoveryAmount / 2);
+        thirst = Math.min(100, thirst + recoveryAmount / 2);
+
+        FXGL.getNotificationService().pushNotification("Rested and recovered " + recoveryAmount + " health!");
+        updateUI();
+    }
+
+    private void repairWithCard(Card card) {
+        // TODO: Implement repair mechanic for damaged raft
+        FXGL.getNotificationService().pushNotification("Repair not yet implemented");
+    }
+
+    private void craftWithCard(Card card) {
+        // TODO: Implement crafting system
+        FXGL.getNotificationService().pushNotification("Crafting not yet implemented");
+    }
+
+    private void navigateWithCard(Card card) {
+        // TODO: Implement navigation to control raft movement direction
+        FXGL.getNotificationService().pushNotification("Navigation not yet implemented");
+    }
+    private void endTurn() {
+        // Reset cards played counter
+        cardsPlayed = 0;
+
+        // Discard hand
+        discardHand();
+
+        // Draw new hand
+        drawHand();
+
+        // Process end of turn effects
+        endPlayerTurn();
+    }
+    private void initCardUI() {
+        // Create card display area
+        cardHandContainer = new VBox(5);
+        cardHandContainer.setTranslateX(GRID_WIDTH * TILE_SIZE - 150);
+        cardHandContainer.setTranslateY(50);
+        cardHandContainer.setPrefWidth(150);
+        cardHandContainer.setPrefHeight(300);
+        FXGL.addUINode(cardHandContainer);
+
+        // Create buffs display area
+        activeBuffsContainer = new HBox(5);
+        activeBuffsContainer.setTranslateX(10);
+        activeBuffsContainer.setTranslateY(10);
+        activeBuffsContainer.setPrefHeight(100);
+        FXGL.addUINode(activeBuffsContainer);
+
+        // Create text for card counts
+        cardsLeftText = new Text("Deck: 0 | Discard: 0 | Played: 0/3");
+        cardsLeftText.setFill(Color.WHITE);
+        cardsLeftText.setFont(Font.font(14));
+        cardsLeftText.setTranslateX(GRID_WIDTH * TILE_SIZE - 250);
+        cardsLeftText.setTranslateY(30);
+        FXGL.addUINode(cardsLeftText);
+
+        // Create text for active buffs
+        activeBuffsText = new Text("Active Buffs: None");
+        activeBuffsText.setFill(Color.WHITE);
+        activeBuffsText.setFont(Font.font(14));
+        activeBuffsText.setTranslateX(10);
+        activeBuffsText.setTranslateY(GRID_HEIGHT * TILE_SIZE - 20);
+        FXGL.addUINode(activeBuffsText);
+
+        // Add end turn button
+        Rectangle endTurnBg = new Rectangle(100, 30, Color.RED);
+        Text endTurnText = new Text("End Turn");
+        endTurnText.setFill(Color.WHITE);
+
+        StackPane endTurnButton = new StackPane(endTurnBg, endTurnText);
+        endTurnButton.setTranslateX(GRID_WIDTH * TILE_SIZE - 120);
+        endTurnButton.setTranslateY(GRID_HEIGHT * TILE_SIZE - 40);
+
+        endTurnBg.setOnMouseClicked(e -> endTurn());
+
+        FXGL.addUINode(endTurnButton);
+    }
+
+    // Method to generate new card rewards
+    private Card generateCardReward() {
+        int roll = random.nextInt(100);
+
+        if (roll < 70) {
+            // Generate action card (70%)
+            ActionType[] actionTypes = ActionType.values();
+            ActionType actionType = actionTypes[random.nextInt(actionTypes.length)];
+
+            int value = 1 + random.nextInt(3); // 1-3 value
+
+            String adjective;
+            if (value == 1) {
+                adjective = "Basic";
+            } else if (value == 2) {
+                adjective = "Improved";
+            } else {
+                adjective = "Advanced";
+            }
+
+            return new Card(adjective + " " + actionType.name().charAt(0) +
+                    actionType.name().substring(1).toLowerCase(),
+                    actionType.getDescription(), actionType, value);
+        } else {
+            // Generate permanent card (30%)
+            BuffEffect[] buffEffects = BuffEffect.values();
+            BuffEffect buffEffect = buffEffects[random.nextInt(buffEffects.length)];
+
+            // 10-30% buff value
+            int value = 10 + random.nextInt(21);
+
+            String name;
+            switch (buffEffect) {
+                case FISHING_CHANCE:
+                    name = random.nextBoolean() ? "Lucky Hook" : "Master Angler";
+                    break;
+                case FISHING_QUANTITY:
+                    name = random.nextBoolean() ? "Big Net" : "Fish Attractor";
+                    break;
+                case BUILDING_COST:
+                    name = random.nextBoolean() ? "Efficient Builder" : "Resource Saver";
+                    break;
+                case BUILDING_STRENGTH:
+                    name = random.nextBoolean() ? "Reinforced Hull" : "Sturdy Frame";
+                    break;
+                case WATER_QUALITY:
+                    name = random.nextBoolean() ? "Clean Filter" : "Purification Crystal";
+                    break;
+                case WATER_QUANTITY:
+                    name = random.nextBoolean() ? "Large Bucket" : "Water Collector";
+                    break;
+                case MATERIAL_CHANCE:
+                    name = random.nextBoolean() ? "Keen Eye" : "Treasure Hunter";
+                    break;
+                case MATERIAL_QUANTITY:
+                    name = random.nextBoolean() ? "Bounty Hunter" : "Resource Magnet";
+                    break;
+                case REST_RECOVERY:
+                    name = random.nextBoolean() ? "Comfortable Hammock" : "Peaceful Dreams";
+                    break;
+                case STORM_RESISTANCE:
+                    name = random.nextBoolean() ? "Weather Shield" : "Storm Breaker";
+                    break;
+                case CARD_DRAW:
+                    name = random.nextBoolean() ? "Quick Thinking" : "Strategic Mind";
+                    break;
+                case INVENTORY_SPACE:
+                    name = random.nextBoolean() ? "Large Backpack" : "Organizing Skills";
+                    break;
+                default:
+                    name = "Mystery Buff";
+            }
+
+            return new Card(name, "Permanent " + buffEffect.getDescription() + " boost",
+                    buffEffect, value);
+        }
+    }
+
+    // Add card reward after events/fishing/etc
+    private void offerCardReward() {
+        java.util.List<Card> cardChoices = new java.util.ArrayList<>();
+
+        // Generate 3 random card choices
+        for (int i = 0; i < 3; i++) {
+            cardChoices.add(generateCardReward());
+        }
+
+        // Create a UI for choosing cards
+        VBox rewardContainer = new VBox(10);
+        rewardContainer.setStyle("-fx-background-color: rgba(0, 0, 0, 0.8); -fx-padding: 20px;");
+        rewardContainer.setPrefWidth(GRID_WIDTH * TILE_SIZE);
+        rewardContainer.setPrefHeight(GRID_HEIGHT * TILE_SIZE);
+        rewardContainer.setAlignment(Pos.CENTER);
+
+        Text choiceText = new Text("Choose a card to add to your deck:");
+        choiceText.setFill(Color.WHITE);
+        choiceText.setFont(Font.font(18));
+
+        HBox cardsBox = new HBox(20);
+        cardsBox.setAlignment(Pos.CENTER);
+
+        for (int i = 0; i < cardChoices.size(); i++) {
+            Card card = cardChoices.get(i);
+
+            // Create card visual
+            Rectangle cardBg = new Rectangle(150, 200,
+                    card.getType() == CardType.ACTION ? Color.LIGHTBLUE : Color.GOLD);
+            cardBg.setArcWidth(15);
+            cardBg.setArcHeight(15);
+            cardBg.setStroke(Color.WHITE);
+            cardBg.setStrokeWidth(2);
+
+            Text cardName = new Text(card.getName());
+            cardName.setFill(Color.BLACK);
+            cardName.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+            cardName.setWrappingWidth(130);
+            cardName.setTextAlignment(TextAlignment.CENTER);
+
+            Text cardDesc = new Text(card.getDescription());
+            cardDesc.setFill(Color.BLACK);
+            cardDesc.setFont(Font.font("Arial", 14));
+            cardDesc.setWrappingWidth(130);
+            cardDesc.setTextAlignment(TextAlignment.CENTER);
+
+            String valueText;
+            if (card.getType() == CardType.ACTION) {
+                valueText = "Value: " + card.getValue();
+            } else {
+                valueText = "+" + card.getValue() + "% " + card.getBuffEffect().getDescription();
+            }
+
+            Text cardValue = new Text(valueText);
+            cardValue.setFill(Color.BLACK);
+            cardValue.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+            cardValue.setWrappingWidth(130);
+            cardValue.setTextAlignment(TextAlignment.CENTER);
+
+            VBox cardContent = new VBox(15);
+            cardContent.setPadding(new Insets(15));
+            cardContent.getChildren().addAll(cardName, cardDesc, cardValue);
+
+            StackPane cardPane = new StackPane(cardBg, cardContent);
+
+            // Make the card clickable
+            final int cardIndex = i;
+            cardBg.setOnMouseClicked(e -> {
+                addCardToDeck(cardChoices.get(cardIndex));
+                FXGL.getNotificationService().pushNotification("Added " +
+                        cardChoices.get(cardIndex).getName() + " to your deck!");
+                FXGL.removeUINode(rewardContainer);
+                shuffleDeck();
+            });
+
+            cardsBox.getChildren().add(cardPane);
+        }
+
+        // Add skip option
+        Button skipButton = new Button("Skip");
+        skipButton.setOnAction(e -> {
+            FXGL.removeUINode(rewardContainer);
+        });
+
+        rewardContainer.getChildren().addAll(choiceText, cardsBox, skipButton);
+        FXGL.addUINode(rewardContainer);
     }
     public static void main(String[] args) {
         launch(args);
